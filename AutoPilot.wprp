@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<WindowsPerformanceRecorder Version="1.0" Author="Microsoft Corporation" Copyright="Microsoft Corporation" Company="Microsoft Corporation">
+  <Profiles>
+    <EventCollector Id="EventCollector_ZtpTrace" Name="ZtpTraceCollector">
+      <BufferSize Value="1024" />
+      <Buffers Value="8" />
+    </EventCollector>
+
+    <!-- TraceLog providers -->   
+    <EventProvider Id="EventProvider_Microsoft.Windows.Shell.CloudExperienceHost.Common" Name="99eb7b56-f3c6-558c-b9f6-09a33abb4c83" />
+    <EventProvider Id="EventProvider-Microsoft.Windows.Shell.CloudExperienceHost" Name="d0034f5e-3686-5a74-dc48-5a22dd4f3d5b" />
+    <EventProvider Id="EventProvider-Microsoft.Windows.Shell.CloudDomainJoin.Client" Name="AA02D1A4-72D8-5F50-D425-7402EA09253A" />
+
+    <Profile Id="ZtpTrace.Verbose.File" Name="ZtpTrace" Description="ZtpTrace.Verbose.File" LoggingMode="File" DetailLevel="Verbose">
+      <Collectors>
+        <EventCollectorId Value="EventCollector_ZtpTrace">
+          <EventProviders>
+            <EventProviderId Value="EventProvider_Microsoft.Windows.Shell.CloudExperienceHost.Common" />
+            <EventProviderId Value="EventProvider-Microsoft.Windows.Shell.CloudExperienceHost" />
+            <EventProviderId Value="EventProvider-Microsoft.Windows.Shell.CloudDomainJoin.Client" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+
+    <Profile Id="ZtpTrace.Light.File" Name="ZtpTrace" Description="ZtpTrace.Light.File" Base="ZtpTrace.Verbose.File" LoggingMode="File" DetailLevel="Light" />
+
+    <Profile Id="ZtpTrace.Verbose.Memory" Name="ZtpTrace" Description="ZtpTrace.Verbose.Memory" Base="ZtpTrace.Verbose.File" LoggingMode="Memory" DetailLevel="Verbose" />
+
+    <Profile Id="ZtpTrace.Light.Memory" Name="ZtpTrace" Description="ZtpTrace.Light.Memory" Base="ZtpTrace.Verbose.File" LoggingMode="Memory" DetailLevel="Light" />
+  </Profiles>
+</WindowsPerformanceRecorder>
