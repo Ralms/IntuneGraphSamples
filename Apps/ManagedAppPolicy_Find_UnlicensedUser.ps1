@@ -406,7 +406,6 @@ Function Get-AADGroupMembers(){
                 if($obj.'@odata.type' -ne "#microsoft.graph.group"){
                     $membersResult += $obj
                 }else{
-                    Write-Host "Group detected $($obj.displayName) with ID $($obj.id)"
                     $membersResult += Get-AADGroupMembers -id $obj.id
                 }
             }
