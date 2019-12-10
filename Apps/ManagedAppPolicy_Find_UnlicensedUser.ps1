@@ -556,7 +556,7 @@ foreach($group in $GroupsFound.Values) # Each group in Hashtable
         }
         elseif($memberODataType -ne "#microsoft.graph.user")
         {
-            Write-Host "Detected diferent object of type '$($memberODataType)' in group membership that is not an user. Object '$($member.displayName)' not verified." -f Red
+            Write-Host "Object '$($member.displayName)' of type '$($memberODataType)' ignored." -f Red
         }
     }
 }
