@@ -6,7 +6,7 @@ Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT
 See LICENSE in the project root for license information.
 
 Autor: Ricardo Marramaque
-Version: 1.1
+Version: 1.2
 
 Script checks all App Protection policies assigned users and looks if they have an Intune license.
 Is considered having an Intune license when the Service plan "INTUNE_A" is assigned.
@@ -346,11 +346,72 @@ Function Get-AADGroup(){
 
             if($members -and $group)
             {
-                $uri = $baseURI + "/$($id)/transitiveMembers?`$select=displayName,userPrincipalName,id"
-                $membersId = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-                $group | Add-Member -Name 'members' -Type NoteProperty -Value $membersId
+                $memberObjects = Get-AADGroupMembers -id $id
+                $group | Add-Member -Name 'members' -Type NoteProperty -Value $memberObjects
             }
             return $group
+        }
+    }
+    catch 
+    {
+        $ex = $_.Exception
+        $errorResponse = $ex.Response.GetResponseStream()
+        $reader = New-Object System.IO.StreamReader($errorResponse)
+        $reader.BaseStream.Position = 0
+        $reader.DiscardBufferedData()
+        $responseBody = $reader.ReadToEnd();
+        Write-Host "Response content:`n$responseBody" -f Red
+        Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+        write-host
+        break
+    }
+}
+
+##################################################
+
+Function Get-AADGroupMembers(){
+
+    <#
+    .SYNOPSIS
+    This function is used to get AAD Groups Members from the Graph API REST interface
+    .DESCRIPTION
+    The function connects to the Graph API Interface and gets all members for a specific group recursively
+    .EXAMPLE
+    Get-AADGroupMembers
+    Returns all members of the group
+    .NOTES
+    NAME: Get-AADGroupMembers
+    #>
+
+    [cmdletbinding()]
+    param
+    (
+        $id
+    )
+
+    # Defining Variables
+    $baseURI = "https://graph.microsoft.com/v1.0/groups"
+
+    try 
+    {
+        if($id)
+        {
+            $uri = $baseURI + "/$($id)/members?`$select=displayName,userPrincipalName,id"
+            $membersResp = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+
+            $membersResult = @()
+
+            # Recursively go over all members, if it's a Group get it's membershipt instead
+            foreach($obj in $membersResp){
+                if($obj.'@odata.type' -ne "#microsoft.graph.group"){
+                    $membersResult += $obj
+                }else{
+                    Write-Host "Group detected $($obj.displayName) with ID $($obj.id)"
+                    $membersResult += Get-AADGroupMembers -id $obj.id
+                }
+            }
+
+            return $membersResult
         }
     }
     catch 
