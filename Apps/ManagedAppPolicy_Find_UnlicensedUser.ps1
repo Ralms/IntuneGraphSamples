@@ -6,6 +6,7 @@ Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT
 See LICENSE in the project root for license information.
 
 Autor: Ricardo Marramaque
+Version: 1.1
 
 Script checks all App Protection policies assigned users and looks if they have an Intune license.
 Is considered having an Intune license when the Service plan "INTUNE_A" is assigned.
@@ -345,7 +346,7 @@ Function Get-AADGroup(){
 
             if($members -and $group)
             {
-                $uri = $baseURI + "/$($id)/members"
+                $uri = $baseURI + "/$($id)/transitiveMembers?`$select=displayName,userPrincipalName,id"
                 $membersId = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
                 $group | Add-Member -Name 'members' -Type NoteProperty -Value $membersId
             }
@@ -544,21 +545,24 @@ write-host "`nFound $($GroupsFound.count) groups assigned to App Protection Poli
 write-host "Extracting unique users..." -f Yellow
 
 foreach($group in $GroupsFound.Values) # Each group in Hashtable
-{ 
+{   
+    Write-Host "Group: $($group.displayName)"
     foreach($member in $group.members) # Each group member
     { 
-        if(-not $UniqueUsers.ContainsKey($member.id) -and $member.'@odata.type' -eq "#microsoft.graph.user")
+        $memberODataType = $member.'@odata.type'
+        if(-not $UniqueUsers.ContainsKey($member.id) -and $memberODataType -eq "#microsoft.graph.user")
         {
             $UniqueUsers[$member.id] = $member
         }
-        elseif($member.'@odata.type' -ne "#microsoft.graph.user")
+        elseif($memberODataType -ne "#microsoft.graph.user")
         {
-            Write-Host "  Recursive check of child groups not supported currently. Group '$($member.displayName)' not verified." -f Red
+            Write-Host "Detected diferent object of type '$($memberODataType)' in group membership that is not an user. Object '$($member.displayName)' not verified." -f Red
         }
     }
 }
 
-write-host "`nChecking users licenses... `n" -f Yellow
+write-host "`nChecking $($UniqueUsers.Values.Count) users licenses." -f Yellow
+write-host "This might take a while... `n" -f Yellow
 $userCountLicenseIssue = 0
 
 foreach($user in $UniqueUsers.Values)
