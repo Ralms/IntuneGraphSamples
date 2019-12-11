@@ -396,7 +396,7 @@ Function Get-AADGroupMembers(){
     {
         if($id)
         {
-            $uri = $baseURI + "/$($id)/members?`$select=displayName,userPrincipalName,id"
+            $uri = $baseURI + "/$($id)/transitiveMembers?`$select=displayName,userPrincipalName,id"
             $membersResp = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
 
             $membersResult = @()
@@ -405,11 +405,8 @@ Function Get-AADGroupMembers(){
             foreach($obj in $membersResp){
                 if($obj.'@odata.type' -ne "#microsoft.graph.group"){
                     $membersResult += $obj
-                }else{
-                    $membersResult += Get-AADGroupMembers -id $obj.id
                 }
             }
-
             return $membersResult
         }
     }
