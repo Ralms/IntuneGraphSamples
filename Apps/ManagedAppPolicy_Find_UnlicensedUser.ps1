@@ -6,7 +6,7 @@ Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT
 See LICENSE in the project root for license information.
 
 Autor: Ricardo Marramaque
-Version: 1.2
+Version: 1.3
 
 Script checks all App Protection policies assigned users and looks if they have an Intune license.
 Is considered having an Intune license when the Service plan "INTUNE_A" is assigned.
