@@ -397,8 +397,8 @@ Function Get-AADGroupMembers(){
         if($id)
         {
             $uri = $baseURI + "/$($id)/transitiveMembers?`$select=displayName,userPrincipalName,id"
-            $membersResp = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
+            $membersResp = Get-AADGroupMembersRecursive -uri $uri
+            
             $membersResult = @()
 
             # Recursively go over all members, if it's a Group get it's membershipt instead
@@ -423,6 +423,36 @@ Function Get-AADGroupMembers(){
         write-host
         break
     }
+}
+
+Function Get-AADGroupMembersRecursive(){
+
+    ## Gets the next link of users when there is over 100 users
+
+    [cmdletbinding()]
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        $uri
+    )
+
+    $membersResult = @();
+
+    try{
+        $membersResp = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get);
+        $membersResult += $membersResp.value;
+
+        if($membersResp.'@odata.nextLink'){
+            $membersResult += Get-AADGroupMembersRecursive -uri $membersResp.'@odata.nextLink'
+        }
+        
+        return $membersResult;
+        
+    }catch{
+        Write-Host "Exception while obtaing all users with URI:`n" -f Red
+        Write-Host "$uri`n" -f Red
+        $_.Exception
+    };
 }
 
 ####################################################
@@ -485,7 +515,7 @@ if($global:authToken){
         write-host "Authentication Token expired" $TokenExpires "minutes ago `n" -ForegroundColor Yellow
     
         # Defining User Principal Name if not present
-        if($User -eq $null -or $User -eq ""){
+        if($null -eq $User -or $User -eq ""){
             $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
             Write-Host
         }
@@ -497,7 +527,7 @@ if($global:authToken){
 # Authentication doesn't exist, calling Get-AuthToken function
 else {
     
-    if($User -eq $null -or $User -eq ""){
+    if($null -eq $User -or $User -eq ""){
         $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
         Write-Host
     }
