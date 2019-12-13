@@ -6,7 +6,9 @@ Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT
 See LICENSE in the project root for license information.
 
 Autor: Ricardo Marramaque
-Version: 1.3
+Version: 1.4
+
+E.G.: .\Apps\ManagedAppPolicy_Find_UnlicensedUser.ps1 -exportCSVPath .\users.csv
 
 Script checks all App Protection policies assigned users and looks if they have an Intune license.
 Is considered having an Intune license when the Service plan "INTUNE_A" is assigned.
@@ -18,6 +20,42 @@ Possible results from the script:
 #>
 
 ####################################################
+[cmdletbinding()]
+param(
+    [System.IO.FileInfo] $exportCSVPath
+)
+
+$folder = ""
+$fileName = ""
+$csvRequested = $false;
+
+function ValidateExportCSVPath(){
+
+    if(-not [string]::IsNullOrEmpty($exportCSVPath)){
+        $folder = Split-Path -Path $exportCSVPath
+        $fileName = Split-Path -Path $exportCSVPath -Leaf
+
+        if($folder.Length -eq 0){
+            throw "Invalid path for CSV export."
+        }
+
+        if(Test-Path -Path $folder){
+            if($fileName.Length -gt 0 -and $fileName.contains(".")){
+                if($fileName -match '.csv$'){
+                    return $true
+                }else{
+                    throw "Invalid file extension, should be .csv"
+                }
+            }else{
+                throw "Missing or invalid file name to export. E.g.: unlincesedUsers.csv"
+            }
+            return $true
+        }else{
+            throw "Folder for CSV export not found."
+        }   
+    }
+    return $false
+}
 
 function Get-AuthToken {
 
@@ -49,14 +87,14 @@ function Get-AuthToken {
 
         $AadModule = Get-Module -Name "AzureAD" -ListAvailable
 
-        if ($AadModule -eq $null) {
+        if ($null -eq $AadModule) {
 
             Write-Host "AzureAD PowerShell module not found, looking for AzureADPreview"
             $AadModule = Get-Module -Name "AzureADPreview" -ListAvailable
 
         }
 
-        if ($AadModule -eq $null) {
+        if ($null -eq $AadModule) {
             write-host
             write-host "AzureAD Powershell module not installed..." -f Red
             write-host "Install by running 'Install-Module AzureAD' or 'Install-Module AzureADPreview' from an elevated PowerShell prompt" -f Yellow
@@ -120,7 +158,7 @@ function Get-AuthToken {
         $MethodArguments = [Type[]]@("System.String", "System.String", "System.Uri", "Microsoft.IdentityModel.Clients.ActiveDirectory.PromptBehavior", "Microsoft.IdentityModel.Clients.ActiveDirectory.UserIdentifier")
         $NonAsync = $AuthContext.GetType().GetMethod("AcquireToken", $MethodArguments)
 
-            if ($NonAsync -ne $null){
+            if ($null -ne $NonAsync){
 
                 $authResult = $authContext.AcquireToken($resourceAppIdURI, $clientId, [Uri]$redirectUri, [Microsoft.IdentityModel.Clients.ActiveDirectory.PromptBehavior]::Auto, $userId)
             
@@ -495,7 +533,11 @@ Function Get-UserLicenses(){
     }
 }
 
-####################################################
+######################### Functions END ###########################
+
+############################ Logic ###################
+
+$csvRequested = ValidateExportCSVPath
 
 #region Authentication
 
@@ -650,7 +692,13 @@ foreach($group in $GroupsFound.Values) # Each group in Hashtable
 
 write-host "`nChecking $($UniqueUsers.Values.Count) users licenses." -f Yellow
 write-host "This might take a while... `n" -f Yellow
+
+if($csvRequested){
+    Write-Host "CSV requested. Users will not be listed in console." -f Yellow
+}
+
 $userCountLicenseIssue = 0
+$unlicensedUsers = New-Object System.Collections.ArrayList;
 
 foreach($user in $UniqueUsers.Values)
 {
@@ -673,20 +721,34 @@ foreach($user in $UniqueUsers.Values)
         }
     }
 
+    
     switch($intuneLicenseFound)
     {
         0 {
-            Write-host "  User $($user.userPrincipalName) Intune license not found!" -f Red
+            if(-not $csvRequested){
+                Write-host "  User $($user.userPrincipalName) Intune license not found!" -f Red
+            }
             $userCountLicenseIssue++
+            [void]$unlicensedUsers.Add($user);
             Break
         }  
         1 {
-            Write-host "  User $($user.userPrincipalName) Intune license is disabled!" -f Yellow
+            if(-not $csvRequested){
+                Write-host "  User $($user.userPrincipalName) Intune license is disabled!" -f Yellow
+            }
             $userCountLicenseIssue++
+            [void]$unlicensedUsers.Add($user);
             Break
         }
     }
 }
+
+if($csvRequested){
+
+    $unlicensedUsers | Export-Csv -Path $exportCSVPath
+    Write-Host "CSV exported with $userCountLicenseIssue unlincesed users"
+}
+
 
 Write-host "`nValidation finished!" -f Cyan
 if($userCountLicenseIssue -eq 0){
