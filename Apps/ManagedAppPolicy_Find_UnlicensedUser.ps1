@@ -434,7 +434,7 @@ Function Get-AADGroupMembers(){
     {
         if($id)
         {
-            $uri = $baseURI + "/$($id)/transitiveMembers?`$select=displayName,userPrincipalName,id"
+            $uri = $baseURI + "/$($id)/transitiveMembers?`$select=displayName,userPrincipalName,id,accountEnabled"
             $membersResp = Get-AADGroupMembersRecursive -uri $uri
             
             $membersResult = @()
@@ -597,7 +597,7 @@ foreach($ManagedAppPolicy in $AppProtectionPolicies)
     {
         write-host "  App Protection Policy: $($ManagedAppPolicy.displayName)" -f Yellow
         $AndroidManagedAppProtection = Get-ManagedAppProtection -id $ManagedAppPolicy.id -OS "Android"
-        $AndroidAssignments = ($AndroidManagedAppProtection | select assignments).assignments
+        $AndroidAssignments = ($AndroidManagedAppProtection | Select-Object assignments).assignments
 
         if($AndroidAssignments)
         {
@@ -616,7 +616,7 @@ foreach($ManagedAppPolicy in $AppProtectionPolicies)
     {
         write-host "  App Protection Policy: $($ManagedAppPolicy.displayName)" -f Yellow
         $iOSManagedAppProtection = Get-ManagedAppProtection -id $ManagedAppPolicy.id -OS "iOS"
-        $iOSAssignments = ($iOSManagedAppProtection | select assignments).assignments
+        $iOSAssignments = ($iOSManagedAppProtection | Select-Object assignments).assignments
     
         if($iOSAssignments)
         {
@@ -635,7 +635,7 @@ foreach($ManagedAppPolicy in $AppProtectionPolicies)
     {
         write-host "  Information Protection Policy: $($ManagedAppPolicy.displayName)" -f Yellow
         $Win10ManagedAppProtection = Get-ManagedAppProtection -id $ManagedAppPolicy.id -OS "WIP_WE"
-        $Win10Assignments = ($Win10ManagedAppProtection | select assignments).assignments
+        $Win10Assignments = ($Win10ManagedAppProtection | Select-Object assignments).assignments
     
         if($Win10Assignments)
         {
@@ -654,7 +654,7 @@ foreach($ManagedAppPolicy in $AppProtectionPolicies)
     {
         write-host "  Information Protection Policy: $($ManagedAppPolicy.displayName)" -f Yellow
         $Win10ManagedAppProtection = Get-ManagedAppProtection -id $ManagedAppPolicy.id -OS "WIP_MDM"      
-        $Win10Assignments = ($Win10ManagedAppProtection | select assignments).assignments
+        $Win10Assignments = ($Win10ManagedAppProtection | Select-Object assignments).assignments
     
         if($Win10Assignments)
         {
@@ -698,48 +698,57 @@ if($csvRequested){
 }
 
 $userCountLicenseIssue = 0
+$disabledUsersCount = 0;
 $unlicensedUsers = New-Object System.Collections.ArrayList;
 
 foreach($user in $UniqueUsers.Values)
 {
-    Get-UserLicenses -userObj ([ref]$user)
-    $intuneLicenseFound = 0;
 
-    foreach($license in $user.licenseDetails)
-    {
-        $intuneLicense = $license.servicePlans | where-object {$_.servicePlanName -eq 'INTUNE_A'}
-        if($intuneLicense)
+    if($user.accountEnabled -eq "true"){
+
+        Get-UserLicenses -userObj ([ref]$user)
+        $intuneLicenseFound = 0;
+
+        foreach($license in $user.licenseDetails)
         {
-            if($intuneLicense.provisioningStatus -ne "Disabled")
+            $intuneLicense = $license.servicePlans | where-object {$_.servicePlanName -eq 'INTUNE_A'}
+            if($intuneLicense)
             {
-                $intuneLicenseFound = 2;
-            }
-            else
-            {
-                $intuneLicenseFound = 1;
+                if($intuneLicense.provisioningStatus -ne "Disabled")
+                {
+                    $intuneLicenseFound = 2;
+                }
+                else
+                {
+                    $intuneLicenseFound = 1;
+                }
             }
         }
-    }
 
-    
-    switch($intuneLicenseFound)
-    {
-        0 {
-            if(-not $csvRequested){
-                Write-host "  User $($user.userPrincipalName) Intune license not found!" -f Red
+        # Print out message in regards to bad licensing and add to CSV
+        switch($intuneLicenseFound)
+        {
+            0 {
+                if(-not $csvRequested){
+                    Write-host "  User $($user.userPrincipalName) Intune license not found!" -f Red
+                }
+                $userCountLicenseIssue++
+                [void]$unlicensedUsers.Add($user);
+                Break
+            }  
+            1 {
+                if(-not $csvRequested){
+                    Write-host "  User $($user.userPrincipalName) Intune license is disabled!" -f Yellow
+                }
+                $userCountLicenseIssue++
+                [void]$unlicensedUsers.Add($user);
+                Break
             }
-            $userCountLicenseIssue++
-            [void]$unlicensedUsers.Add($user);
-            Break
-        }  
-        1 {
-            if(-not $csvRequested){
-                Write-host "  User $($user.userPrincipalName) Intune license is disabled!" -f Yellow
-            }
-            $userCountLicenseIssue++
-            [void]$unlicensedUsers.Add($user);
-            Break
         }
+
+    }else{
+        $disabledUsersCount++;
+        [void]$unlicensedUsers.Add($user);
     }
 }
 
@@ -749,8 +758,9 @@ if($csvRequested){
     Write-Host "CSV exported with $userCountLicenseIssue unlincesed users"
 }
 
-
+Write-Host "`nFound $disabledUsersCount disabled users that are being targeted by App Protection policies." -f Yellow
 Write-host "`nValidation finished!" -f Cyan
+
 if($userCountLicenseIssue -eq 0){
     Write-Host "No unlicensed user has been found."  -f Green
 }
