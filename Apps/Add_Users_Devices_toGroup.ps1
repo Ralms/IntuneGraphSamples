@@ -4,7 +4,33 @@
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
 See LICENSE in the project root for license information.
 
+This script is under MIT license, please read the information here https://github.com/Ralms/IntuneGraphSamples/blob/master/LICENSE
+Short description:
+"THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE."
+
 #>
+
+#This script will get all users of a certain AAD group and check all the managed devices that the user is the owner. After that will add the devices to an AAD Device group
+
+#Variables you need to add for the script to run
+
+###########################################################
+#Add authentication ids of your Azure app registration, to avoid using username and passwords.
+$clientId = "AAD Application client ID "
+$clientSecret = "AAD Application secret"
+$tenant = "Tenant ID"
+###########################################################
+#Add the user source group name or group id
+$AADGroup = "Source AAD user group ID"
+#Add the destination group id
+$AADDestGroupId = "Destination AAD device group ID"
+####################################################
 
 ####################################################
 
@@ -68,12 +94,6 @@ Write-Host "Checking for AzureAD module..."
 
 [System.Reflection.Assembly]::LoadFrom($adalforms) | Out-Null
 
-###########################################################
-#Add authentication ids of your Azure app registration, to avoid using username and passwords.
-$clientId = "Application client ID"
-$clientSecret = "Client secret key"
-$tenant = "tenant ID"
-###########################################################
 
 #$redirectUri = "urn:ietf:wg:oauth:2.0:oob"
 
@@ -210,8 +230,9 @@ Function Get-AADGroupMembers(){
     {
         if($id)
         {
-            $uri = $baseURI + "/$($id)/members?`$select=displayName,userPrincipalName,id"
-            $membersResp = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+            $uri = $baseURI + "/$($id)/transitiveMembers?`$select=displayName,userPrincipalName,id"
+            #$membersResp = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+            $membersResp = Get-AADRecursive -uri $uri
 
             $membersResult = @()
 
@@ -219,8 +240,6 @@ Function Get-AADGroupMembers(){
             foreach($obj in $membersResp){
                 if($obj.'@odata.type' -ne "#microsoft.graph.group"){
                     $membersResult += $obj
-                }else{
-                    $membersResult += Get-AADGroupMembers -id $obj.id
                 }
             }
 
@@ -268,7 +287,6 @@ NAME: Get-ManagedDevices
     $graphApiVersion = "beta"
     $Resource = "deviceManagement/managedDevices"
     $zeros = "00000000-0000-0000-0000-000000000000"
-    $TimeNow = (Get-Date).ToUniversalTime()
     #Puts time back X days
     $TimeOld= (Get-Date).ToUniversalTime().AddDays(-200)
     
@@ -278,15 +296,8 @@ NAME: Get-ManagedDevices
         #$deviceClean = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
         $deviceClean = Get-AADRecursive -uri $uri
 
-        $deviceResult = @()
-
-        foreach($obj in $deviceClean){
-            if($obj.'@odata.type' -ne "#microsoft.graph.group"){
-                $deviceResult += $obj
-            }
-        } 
  
-        return $deviceResult | where-Object {
+        return $deviceClean | where-Object {
             $_.azureADDeviceId -ne $zeros -and 
             $_.deviceRegistrationState -eq "registered" -and 
             ($_.userId -ne "" -or $_.userId -ne $zeros) -and
@@ -517,14 +528,6 @@ $global:authToken = Get-AuthToken
 
 # Getting AAD group members
 
-####################################################
-####################################################
-#Add the user source group name or group id
-$AADGroup = "AAD User Group ID"
-#Add the destination group id
-$AADDestGroupId = "AAD Destination device group ID"
-####################################################
-####################################################
 
 $GroupMembers = @()
 $TargetGroup = Get-AADGroup -groupId $AADGroup -Members
