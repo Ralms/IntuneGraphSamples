@@ -701,29 +701,37 @@ $userCountLicenseIssue = 0
 $disabledUsersCount = 0;
 $unlicensedUsers = New-Object System.Collections.ArrayList;
 
-foreach($user in $UniqueUsers.Values)
+Foreach($user in $UniqueUsers.Values)
 {
 
     if($user.accountEnabled -eq "true"){
+
+        $userServicePlans = New-Object System.Collections.ArrayList;
 
         Get-UserLicenses -userObj ([ref]$user)
         $intuneLicenseFound = 0;
 
         foreach($license in $user.licenseDetails)
-        {
-            $intuneLicense = $license.servicePlans | where-object {$_.servicePlanName -eq 'INTUNE_A'}
-            if($intuneLicense)
-            {
-                if($intuneLicense.provisioningStatus -ne "Disabled")
-                {
-                    $intuneLicenseFound = 2;
-                }
-                else
-                {
-                    $intuneLicenseFound = 1;
+        {   
+            foreach($servicePlan in $license.servicePlans){
+
+                [void]$userServicePlans.Add("$($servicePlan.servicePlanName): $($servicePlan.provisioningStatus)");
+
+                if($servicePlan.servicePlanName -eq 'INTUNE_A'){
+                    if($servicePlan.provisioningStatus -ne "Disabled")
+                    {
+                        $intuneLicenseFound = 2;
+                    }
+                    else
+                    {
+                        $intuneLicenseFound = 1;
+                    }
                 }
             }
         }
+
+        $userServicePlansString = $userServicePlans -join "; "
+        Add-Member -InputObject $user -Name 'servicePlans' -MemberType NoteProperty -Value "$userServicePlansString"
 
         # Print out message in regards to bad licensing and add to CSV
         switch($intuneLicenseFound)
@@ -754,9 +762,11 @@ foreach($user in $UniqueUsers.Values)
 
 if($csvRequested){
 
-    $unlicensedUsers | Export-Csv -Path $exportCSVPath
+    $unlicensedUsers | Select-Object "@odata.type", displayName, id, userPrincipalName, accountEnabled, servicePlans | Export-Csv -Path $exportCSVPath
     Write-Host "CSV exported with $userCountLicenseIssue unlincesed users"
 }
+
+#$unlicensedUsers  | Select-Object "@odata.type", displayName, id, userPrincipalName, accountEnabled, servicePlans | ft
 
 Write-Host "`nFound $disabledUsersCount disabled users that are being targeted by App Protection policies." -f Yellow
 Write-host "`nValidation finished!" -f Cyan
