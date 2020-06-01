@@ -178,7 +178,8 @@ Function Get-GraphRecursive(){
     };
 }
 
-Function Get-GraphURIwithRetry(){
+
+Function Invoke-GraphURIwithRetry(){
     [cmdletbinding()]
     param
     (
@@ -186,47 +187,73 @@ Function Get-GraphURIwithRetry(){
         $uri,
         [Parameter(Mandatory=$true)]
         $method,
-        $body
+        $body,
+        [Switch] $noSuccessLog,
+        $customRetryAfter
     )
 
-    try
-    {
+    try{
         if($body){
             $bodyJson = $body | ConvertTo-Json
             $res = Invoke-WebRequest -Uri $uri -Headers $authToken -Body $bodyJson -ContentType "application/json" -Method $method; 
         }else{
             $res = Invoke-WebRequest -Uri $uri -Headers $authToken -Method $method; 
         }
+        if(-not $noSuccessLog){
+            Write-Host "[Invoke-GraphURIwithRetry] $($res.StatusCode) - $method - $uri"
+        }
         
         return $res.Content | ConvertFrom-Json
-    }
-    catch
-    {
+    }catch{
         # Although many properties can be accessed directly, the Headers is
         # an Hashtable, as such we need to get the value by key. 
 
         $errorCode = $_.Exception.Response.StatusCode
         $requestID = $_.Exception.Response.Headers['request-id']
         $retryAfter = $_.Exception.Response.Headers['Retry-After']
-        $msDiagnostic = $_.Exception.Response.Headers['x-ms-ags-diagnostic']
         $errorDate = $_.Exception.Response.Headers['Date']
 
         if($errorCode -eq 429){
-            Write-Host "[429] Waiting $retryAfter seconds before retrying";
-            start-sleep -Seconds $($retryAfter + 1);
-            return Get-GraphURIwithRetry -uri $uri -method $method -body $body;
+            $wait = 1 + $retryAfter;
+            Write-Host "[Invoke-GraphURIwithRetry] 429 - $method - $uri - Waiting $wait seconds before retrying";
+            start-sleep -Seconds $wait;
+            return Invoke-GraphURIwithRetry -uri $uri -method $method -body $body;
+
+        }elseif($errorCode -eq 503 -or $errorCode -eq 504){
+            Write-Host "[Invoke-GraphURIwithRetry] Something went wrong..."
+            Write-Host $_.Exception.Message
+            Write-Host "[Invoke-GraphURIwithRetry] Request Details: $method - $uri"
+            Write-Host "[Invoke-GraphURIwithRetry] Error code: $errorCode"
+            Write-Host "[Invoke-GraphURIwithRetry] Request-ID: $requestID"
+            Write-Host "[Invoke-GraphURIwithRetry] Date: $errorDate"
+            Write-Host "[Invoke-GraphURIwithRetry] Response URI: $($_.Exception.Response.ResponseUri)"
+            if($customRetryAfter){
+                $retryAfter = $customRetryAfter
+            }else{
+                $retryAfter = 5
+            }
+            
+            if($retryAfter -gt 80){
+                Write-Host "[Invoke-GraphURIwithRetry] Retry stopped, 5 requests performed already";
+            }else{
+                Write-Host "[Invoke-GraphURIwithRetry] Waiting $retryAfter seconds before retrying";
+                $newRetryAfterTime = $retryAfter *2
+                return Invoke-GraphURIwithRetry -uri $uri -method $method -body $body -customRetryAfter $newRetryAfterTime;
+            }
 
         }elseif($errorCode -gt 500){
-            Write-Host "Something went wrong..."
+            Write-Host "[Invoke-GraphURIwithRetry] Something went wrong..."
             Write-Host $_.Exception.Message
-            Write-Host "Error code: $errorCode"
-            Write-Host "Request-ID: $requestID"
-            Write-Host "Date: $errorDate"
-            Write-Host "Response URI: $($_.Exception.Response.ResponseUri)"
+            Write-Host "[Invoke-GraphURIwithRetry] Request Details: $method - $uri"
+            Write-Host "[Invoke-GraphURIwithRetry] Error code: $errorCode"
+            Write-Host "[Invoke-GraphURIwithRetry] Request-ID: $requestID"
+            Write-Host "[Invoke-GraphURIwithRetry] Date: $errorDate"
+            Write-Host "[Invoke-GraphURIwithRetry] Response URI: $($_.Exception.Response.ResponseUri)"
+        }else{
+            Write-Host "[Invoke-GraphURIwithRetry] $errorCode - $method - $uri - $($_.Exception.Message)";
         }
     }
 }
-
 
 ######################### Functions END ###########################
 
@@ -276,8 +303,8 @@ else {
 ####################################################
 
 # The Intune device id to perform the test
-# WARNING: This script will modify the management name of this device
-$deviceID = "2ad1873d-5399-475b-8055-48d9331bf512" 
+# --> WARNING: This script will modify the management name of this device
+$deviceID = "<Your Intune Device ID for Testing>" 
 
 write-host "Starting test..." -f Yellow
 
@@ -292,8 +319,8 @@ while(-not $stop) {
         "managedDeviceName" = "GraphTest$count";
     }
 
-    $res = Get-GraphURIwithRetry -uri $uri -body $body -method Patch;
-    Write-Host "Retry $count";
+    $res = Invoke-GraphURIwithRetry -uri $uri -body $body -method Patch;
+    Write-Host "PATCH count: $count";
     $count++
 }
 
